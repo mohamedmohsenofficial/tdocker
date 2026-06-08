@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="Images/Tdocker.png" alt="TDocker Logo" width="250">
+  <img src="Images/Tdocker.png" alt="TDocker Logo" width="2000">
 
 # 🐳 TDocker - Terminal Docker Manager
 

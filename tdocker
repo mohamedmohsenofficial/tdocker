@@ -31,7 +31,7 @@ printf "${WHITE}TDocker helps you deploy, organize and manage Docker containers 
 
 printf " Created by :      ${BOLD}Mohamed Mohsen${NC} with contributions from the open-source community.\n\n"
 printf " GitHub :          ${CYAN}https://github.com/mohamedmohsenofficial/tdocker${NC}\n\n"
-printf " LinkedIn :        ${CYAN}https://linkedin.com/in/mohamedmohsenofficial${NC}\n\n"
+printf " LinkedIn :        ${CYAN}https://linkedin.com/in/mohsenofficial${NC}\n\n"
 printf " Version :         ${YELLOW}v${VERSION}${NC}\n\n"
 sleep 0.5
 

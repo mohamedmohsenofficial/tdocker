@@ -1,361 +1,139 @@
 <div align="center">
   <img src="Images/Tdocker.png" alt="TDocker Logo" width="2000">
 
-# 🐳 TDocker - Terminal Docker Manager
+# 🐳 TDocker - Terminal Container Manager
 
 </div>
 
 ![Version](https://img.shields.io/badge/Version-1.0.0-orange?style=for-the-badge)
-![Bash](https://img.shields.io/badge/Language-Bash-4EAA25?style=for-the-badge\&logo=gnu-bash\&logoColor=white)
-![Docker](https://img.shields.io/badge/Docker-Required-2496ED?style=for-the-badge\&logo=docker\&logoColor=white)
+![Bash](https://img.shields.io/badge/Language-Bash-4EAA25?style=for-the-badge&logo=gnu-bash&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Supported-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+![Podman](https://img.shields.io/badge/Podman-Supported-892CA0?style=for-the-badge&logo=podman&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)
-![Open Source](https://img.shields.io/badge/Open_Source-Yes-success?style=for-the-badge)
 
-TDocker is a lightweight terminal-based Docker management tool designed to simplify container deployment, updates, HTTPS integration, cleanup, and day-to-day administration without relying on heavy web dashboards.
+**TDocker** is a lightweight terminal-based container management tool designed to simplify deployment, updates, HTTPS integration, cleanup, and day-to-day administration for both **Docker** and **Podman** without relying on heavy web dashboards.
 
-It provides a single interactive interface for managing Docker containers, generating Compose configurations, enabling HTTPS with Caddy, updating services, and keeping Docker environments organized.
-
-Built for developers, homelab users, self-hosting enthusiasts, and anyone who prefers working directly from the terminal.
+It provides a single interactive interface for managing your containers, generating Compose configurations, enabling HTTPS with Caddy, and keeping your environments organized. Built for developers, homelab users, self-hosting enthusiasts, and anyone who prefers working directly from the terminal.
 
 ---
 
-# ✨ Features
+## ✨ Features
 
 ### 🚀 Deploy Containers
-
-Create and launch new containers from a simple interactive menu.
-
-TDocker automatically generates the required Docker Compose configuration and starts the container for you.
-
----
+Create and launch new containers from a simple interactive menu. TDocker automatically generates the required Compose configuration (Docker or Podman) and starts the container for you.
 
 ### 🔒 Import Existing Containers
+Already running a container? Import it into TDocker management without rebuilding everything from scratch. The tool automatically detects the image, internal/external ports, mounted volumes, and existing configuration, then generates a reusable Compose file.
 
-Already running a container?
-
-Import it into TDocker management without rebuilding everything from scratch.
-
-The tool automatically detects:
-
-* Container image
-* Internal ports
-* External ports
-* Mounted volumes
-* Existing configuration
-
-Then generates a reusable Compose file.
-
----
-
-### 🌐 HTTPS Integration
-
-Enable HTTPS access using Caddy Proxy.
-
-When encryption is enabled, TDocker automatically:
-
-* Connects containers to the required network
-* Configures routing labels
-* Creates HTTPS-enabled local domains
-* Simplifies local development and testing
-
-Example:
-
-```text
-https://myapp.localhost
-```
-
----
+### 🌐 HTTPS Integration (Docker Only)
+Enable HTTPS access using Caddy Proxy. When encryption is enabled, TDocker automatically connects containers to the required network, configures routing labels, and creates HTTPS-enabled local domains (e.g., `https://myapp.localhost`), simplifying local development and testing.
 
 ### 🛠️ Container Management Dashboard
-
-Manage containers directly from the terminal.
-
-Available actions include:
-
-* Start
-* Stop
-* Restart
-* Pause
-* Resume
-* Kill
-* Remove
-* Rename
-* Change image
-* Modify ports
-* Recreate configuration
-
-No manual Compose editing required.
-
----
+Manage containers directly from the terminal. Available actions include:
+Start, Stop, Restart, Pause, Resume, Kill, Remove, Rename, Change image, Modify ports, and Recreate configuration—no manual Compose editing required.
 
 ### 🔄 Update All Containers
+Update all managed services from a single menu option. TDocker pulls the latest images, recreates the containers, and applies updates automatically.
 
-Update all managed services from a single menu option.
-
-TDocker can:
-
-* Pull latest images
-* Recreate containers
-* Apply updates automatically
-
-Useful for maintaining multiple self-hosted applications.
+### 🧹 Space Recovery & Cleanup
+Container environments accumulate unused resources over time. TDocker includes a cleanup mode that safely removes stopped containers, dangling/unused images, unused networks, build cache, and unused volumes. It displays a summary and estimated storage recovery before executing.
 
 ---
 
-### 🧹 Docker Cleanup & Space Recovery
+## ⚠️ Requirements
 
-Docker environments accumulate unused resources over time.
+TDocker requires either Docker or Podman installed on your system.
 
-TDocker includes a cleanup mode that shows a preview before making any changes.
-
-The cleanup process can remove:
-
-* Stopped containers
-* Dangling images
-* Unused images
-* Unused networks
-* Build cache
-* Temporary Docker files
-* Partial downloads
-* Unused volumes
-
-Before removal, TDocker displays a summary and estimated storage recovery.
-
-Running containers and active resources remain untouched.
-
----
-
-### ⚙️ Docker Configuration Management
-
-Manage custom Docker daemon configurations safely.
-
-TDocker can:
-
-* Create daemon.json
-* Store it in a custom location
-* Create symbolic links automatically
-* Restart Docker when required
-
----
-
-### 🔍 Automatic Environment Checks
-
-On startup, TDocker verifies:
-
-* Docker installation
-* Docker Compose availability
-* Docker root directory
-* Caddy Proxy status
-* Docker configuration status
-
-Helping identify issues before deployment.
-
----
-
-# 📊 Feature Overview
-
-| Feature                   | Supported |
-| ------------------------- | --------- |
-| Container Deployment      | ✅         |
-| Existing Container Import | ✅         |
-| Docker Compose Generation | ✅         |
-| HTTPS Integration         | ✅         |
-| Container Updates         | ✅         |
-| Container Dashboard       | ✅         |
-| Docker Cleanup            | ✅         |
-| Volume Management         | ✅         |
-| Docker Configuration      | ✅         |
-
----
-
-# ⚠️ Requirements
-
-TDocker requires:
-
-* Docker Engine
-* Docker Compose
-
-Verify installation:
-
+**For Docker Users:**
 ```bash
-docker --version
-docker compose version
-```
-
----
-
-## Debian / Ubuntu
-
-```bash
-sudo apt update
-sudo apt install docker.io docker-compose-v2
+# Debian / Ubuntu
+sudo apt update && sudo apt install docker.io docker-compose-v2
 sudo systemctl enable --now docker
 ```
-
----
-
-## Fedora
-
 ```bash
+# Fedora
 sudo dnf install docker docker-compose
 sudo systemctl enable --now docker
-```
 
----
-
-## Arch Linux
-
-```bash
+# Arch Linux
 sudo pacman -S docker docker-compose
 sudo systemctl enable --now docker
+
 ```
 
----
+**For Podman Users:**
+Install `podman` and `podman-compose` using your distribution's package manager.
 
-### Optional
-
-Add your user to the Docker group:
+*(Optional but recommended): Add your user to the docker group to run commands without sudo.*
 
 ```bash
 sudo usermod -aG docker $USER
-```
+# Log out and back in for the change to take effect.
 
-Log out and back in for the change to take effect.
+```
 
 ---
 
-# 🚀 Installation
+## 🚀 Installation & Updating
 
-Download the latest version:
-
-```bash
-wget https://raw.githubusercontent.com/mohamedmohsenofficial/tdocker/main/tdocker
-```
-
-Make it executable:
+**Installation:**
+Run this single command to download TDocker, make it executable, and move it to your system binaries:
 
 ```bash
-chmod +x tdocker
+sudo curl -L "[https://raw.githubusercontent.com/mohamedmohsenofficial/tdocker/main/tdocker](https://raw.githubusercontent.com/mohamedmohsenofficial/tdocker/main/tdocker)" -o /usr/local/bin/tdocker && sudo chmod +x /usr/local/bin/tdocker
+
 ```
 
-Move it into your PATH:
+**Updating:**
+TDocker features a built-in auto-updater. Every time you run the script, it checks the repository in the background. If a new version is available, it applies the update automatically.
 
-```bash
-sudo mv tdocker /usr/local/bin/
-```
+---
 
-Launch:
+## 💻 How to Use
+
+Simply launch the tool by typing:
 
 ```bash
 tdocker
+
 ```
 
----
+**On first launch:**
 
-# 💻 Usage
-
-Start the tool:
-
-```bash
-tdocker
-```
-
-On first launch:
-
-1. Select a working directory
-2. Choose an action from the menu
-3. Follow the prompts
-4. Deploy or manage containers
+1. Select a working directory to store your configurations.
+2. Choose an action from the interactive menu.
+3. Follow the simple prompts to deploy or manage your containers.
 
 ---
 
-# 📋 Main Menu
+## 🏆 Comparison
 
-```text
-1. Import & Encrypt Existing Container
-2. Deploy New Container
-3. Manage / Edit Container
-4. Update All Containers
-5. Setup Custom daemon.json
-6. Docker Cleanup & Space Recovery
-```
-
----
-
-# 🏆 Comparison
-
-| Feature                | TDocker  | Portainer | Docker CLI |
-| ---------------------- | -------- | --------- | ---------- |
-| Terminal Based         | ✅        | ❌         | ✅          |
-| Interactive Management | ✅        | ✅         | ❌          |
-| Compose Generation     | ✅        | Partial   | Manual     |
-| HTTPS Integration      | ✅        | Manual    | Manual     |
-| Bulk Updates           | ✅        | Partial   | Manual     |
-| Cleanup Preview        | ✅        | ❌         | Manual     |
-| Resource Usage         | Very Low | Higher    | Very Low   |
+| Feature | TDocker | Portainer | Docker CLI |
+| --- | --- | --- | --- |
+| **Terminal Based** | ✅ | ❌ | ✅ |
+| **Interactive UI** | ✅ | ✅ | ❌ |
+| **Dual Engine (Docker/Podman)** | ✅ | Partial | ❌ |
+| **Compose Generation** | ✅ | Partial | Manual |
+| **Auto HTTPS Integration** | ✅ | Manual | Manual |
+| **Bulk Updates** | ✅ | Partial | Manual |
+| **Resource Usage** | Very Low | Higher | Very Low |
 
 ---
 
-# 📂 Project Structure
+## 🤝 Contributing
 
-```text
-Docker/
-├── app1/
-├── app2/
-├── app1-compose.yml
-├── app2-compose.yml
-├── config/
-└── backups/
-```
+This is a community-powered open-source project. Contributions are welcome for new management features, better workflows, documentation improvements, and bug fixes. Feel free to open an Issue or Pull Request.
 
 ---
 
-# 🤝 Contributing
+## 📜 License
 
-Open-source project powered by the community.
-
-Contributions are welcome for:
-
-* New container management features
-* Better Docker workflows
-* Documentation improvements
-* Bug fixes
-* Performance optimizations
-
-Feel free to open an Issue or Pull Request.
+This project is released under the MIT License. You are free to use, modify, distribute, and fork for both personal and commercial projects.
 
 ---
-
-# 📜 License
-
-This project is released under the MIT License.
-
-You are free to:
-
-* Use
-* Modify
-* Distribute
-* Fork
-
-for personal and commercial projects.
-
----
-
 
 ## 💖 Support
 
-If you find this project useful, consider supporting its development. Every contribution helps improve features, maintain the project, and keep it accessible for everyone. 🌍✨
+If this tool simplifies your workflow, consider supporting its development. Every contribution helps improve features and maintain the project.
 
-<p align="left">
-  <a href="https://www.buymeacoffee.com/mohsenofficial" target="_blank">
-    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" width="200">
-  </a>
-</p>
-
----
-
-Built for my own needs, shared for the community. If it happens to help someone else, then it has done more than I originally intended
-
-Built with passion, curiosity, countless hours of learning, and a deep love for open-source software.
-
-Thank you for using this project and being part of its journey. 🤟🏼😘
+Built for my own needs, shared with the community. Thank you for using TDocker.

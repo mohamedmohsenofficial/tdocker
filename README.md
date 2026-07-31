@@ -78,11 +78,56 @@ sudo usermod -aG docker $USER
 
 ## 🚀 Installation & Updating
 
-**Installation:**
-Run this single command to download TDocker, make it executable, and move it to your system binaries:
+
+**Debian / Ubuntu:**
 
 ```bash
-sudo curl -L "[https://raw.githubusercontent.com/mohamedmohsenofficial/tdocker/main/tdocker](https://raw.githubusercontent.com/mohamedmohsenofficial/tdocker/main/tdocker)" -o /usr/local/bin/tdocker && sudo chmod +x /usr/local/bin/tdocker
+# 1. Install the required Docker environment on Debian / Ubuntu
+sudo apt update && sudo apt install -y docker.io docker-compose-v2 && sudo systemctl enable --now docker
+
+# 2. Download the TDocker script directly from the official repository
+wget https://raw.githubusercontent.com/mohamedmohsenofficial/tdocker/main/tdocker
+
+# 3. Make the script executable
+chmod +x tdocker
+
+# 4. Move it to the system's bin folder to make it accessible globally
+sudo mv tdocker /usr/local/bin/
+
+```
+
+**Fedora:**
+
+```bash
+# 1. Install the required Docker environment on Fedora
+sudo dnf install -y docker docker-compose && sudo systemctl enable --now docker
+
+# 2. Download the TDocker script directly from the official repository
+wget https://raw.githubusercontent.com/mohamedmohsenofficial/tdocker/main/tdocker
+
+# 3. Make the script executable
+chmod +x tdocker
+
+# 4. Move it to the system's bin folder to make it accessible globally
+sudo mv tdocker /usr/local/bin/
+
+```
+
+**Arch Linux:**
+
+```bash
+# 1. Install the required Docker environment on Arch Linux
+sudo pacman -S --noconfirm docker docker-compose && sudo systemctl enable --now docker
+
+# 2. Download the TDocker script directly from the official repository
+wget https://raw.githubusercontent.com/mohamedmohsenofficial/tdocker/main/tdocker
+
+# 3. Make the script executable
+chmod +x tdocker
+
+# 4. Move it to the system's bin folder to make it accessible globally
+sudo mv tdocker /usr/local/bin/
+
 
 ```
 

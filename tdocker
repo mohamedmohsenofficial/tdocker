@@ -27,239 +27,214 @@ cat << "LOGO"
 LOGO
 printf "${NC}\n"
 
-printf "${WHITE}TDocker helps you deploy, organize and manage Docker containers from a single terminal interface.${NC}\n\n"
-
-printf " Created by :      ${BOLD}Mohamed Mohsen${NC} with contributions from the open-source community.\n\n"
-printf " GitHub :          ${CYAN}https://github.com/mohamedmohsenofficial/tdocker${NC}\n\n"
-printf " LinkedIn :        ${CYAN}https://linkedin.com/in/mohsenofficial${NC}\n\n"
+printf "${WHITE}Welcome to TDocker. A unified local container management interface for Docker and Podman.\n${NC}\n"
+printf " Created by :      ${BOLD}Mohamed Mohsen${NC} & the open-source community\n"
+printf " GitHub :          ${CYAN}https://github.com/mohamedmohsenofficial/tdocker${NC}\n"
+printf " LinkedIn :        ${CYAN}https://linkedin.com/in/mohsenofficial${NC}\n"
 printf " Version :         ${YELLOW}v${VERSION}${NC}\n\n"
 sleep 0.5
 
 # --- UPDATE CHECKER ---
-printf "${CYAN}🔍 Checking for updates... ${NC}"
+printf "${CYAN}Checking for updates... ${NC}"
 REMOTE_VERSION=$(curl -s --max-time 5 "$REPO_URL" | grep -m 1 '^VERSION=' | cut -d'"' -f2)
 
 if [[ -z "$REMOTE_VERSION" ]]; then
     printf "${YELLOW}Could not connect. Working offline.${NC}\n\n"
 elif [[ "$REMOTE_VERSION" != "$VERSION" ]]; then
-    printf "\n${YELLOW}🚀 New version available: v${REMOTE_VERSION} (Current: v${VERSION})${NC}\n\n"
-    printf "🤔 Do you want to install the update now? (y/n): "
-    read UPDATE_CHOICE
-    if [[ "$UPDATE_CHOICE" =~ ^[Yy]$ ]]; then
-        printf "\n${MAGENTA}📥 Downloading update...${NC}\n"
-        TEMP_FILE="/tmp/tdocker_update"
-        if curl -s -o "$TEMP_FILE" "$REPO_URL"; then
-            chmod +x "$TEMP_FILE"
-            sudo mv "$TEMP_FILE" "$0"
-            printf "${GREEN}😊 Update successful! Restarting TDocker...${NC}\n\n"
-            sleep 1
-            exec "$0" "$@"
-        else
-            printf "${RED}❌ Update failed. Please try again later.${NC}\n\n"
-        fi
+    printf "\n${YELLOW}New version available: v${REMOTE_VERSION} ${RED}- Current: v${VERSION}${NC}\n\n"
+    printf "${MAGENTA}Auto-updating TDocker...${NC}\n"
+    TEMP_FILE="/tmp/tdocker_update"
+    if curl -s -o "$TEMP_FILE" "$REPO_URL"; then
+        chmod +x "$TEMP_FILE"
+        sudo mv "$TEMP_FILE" "$0" 2>/dev/null || mv "$TEMP_FILE" "$0"
+        printf "${GREEN}Update successful. Restarting TDocker...${NC}\n\n"
+        sleep 1
+        exec "$0" "$@"
     else
-        printf "\n${GREEN}😊 Continuing with current version...${NC}\n\n"
+        printf "${RED}Update failed. Proceeding with current version.${NC}\n\n"
     fi
 else
-    printf "${GREEN}Up to date 😊${NC}\n\n"
+    printf "${GREEN}Up to date.${NC}\n\n"
 fi
 
-# --- GLOBAL CONFIGURATION (ONE-TIME SETUP) ---
+# --- ENGINE DETECTION ---
+DOCKER_CMD=""
+PODMAN_CMD=""
+if command -v docker &> /dev/null; then DOCKER_CMD="docker"; fi
+if command -v podman &> /dev/null; then PODMAN_CMD="podman"; fi
+
+if [ -z "$DOCKER_CMD" ] && [ -z "$PODMAN_CMD" ]; then
+    printf "${RED}Error: Neither Docker nor Podman is installed on this system.${NC}\n"
+    printf "Please install a container engine first.\n"
+    exit 1
+fi
+
+# --- GLOBAL CONFIGURATION ---
 CONF_FILE="$HOME/.tdocker_conf"
 if [ -f "$CONF_FILE" ]; then
     source "$CONF_FILE"
 else
-    printf "${BOLD}${WHITE}💡 First-time setup! Where do you want to save all containers and settings?${NC}\n"
-    printf "📂 Path: "
+    printf "${BOLD}${WHITE}First-time setup. Where do you want to save all containers and settings?${NC}\n"
+    printf "Path ${RED}- e.g. /home/$USER/Docker:${NC} "
     read INPUT_DIR
-    INPUT_DIR=${INPUT_DIR:-/home/mohamed/Docker}
+    INPUT_DIR=${INPUT_DIR:-$HOME/Docker}
     BASE_DIR=$(echo "$INPUT_DIR" | sed 's/^cd //; s/ $//')
     echo "BASE_DIR=\"$BASE_DIR\"" > "$CONF_FILE"
-    printf "${GREEN}✅ Saved default path to $CONF_FILE${NC}\n\n"
+    printf "${GREEN}Saved default path to $CONF_FILE${NC}\n\n"
     sleep 1
 fi
 
 mkdir -p "$BASE_DIR"
 cd "$BASE_DIR" || exit
 
-# --- CADDY PROXY AUTO-INSTALL ---
-printf "${CYAN}🔍 Checking Caddy Proxy...${NC}\n"
-if docker ps -a --format '{{.Names}}' | grep -Eq "^caddy_proxy$"; then
-    printf "${GREEN}✅ Caddy Proxy is already installed and ready.${NC}\n\n"
-else
-    printf "${YELLOW}Caddy Proxy was not found on this system.${NC}\n"
-    printf "Installing required components...\n"
-
-    printf "Creating network..."
-    docker network ls | grep -q caddy_net || docker network create caddy_net >/dev/null 2>&1
-    printf " done\n"
-
-    printf "Downloading image..."
-    docker pull lucaslorentz/caddy-docker-proxy:latest >/dev/null 2>&1
-    printf " done\n"
-
-    printf "Starting Caddy Proxy...\n"
-    docker run -d \
-        --name caddy_proxy \
-        --network caddy_net \
-        --restart always \
-        -p 80:80 \
-        -p 443:443 \
-        -v /var/run/docker.sock:/var/run/docker.sock \
-        -v caddy_data:/data \
-        lucaslorentz/caddy-docker-proxy:latest >/dev/null 2>&1
-
-    if docker ps --format '{{.Names}}' | grep -Eq "^caddy_proxy$"; then
-        printf "${GREEN}✅ Caddy Proxy is ready and HTTPS features are now available.${NC}\n\n"
+# --- CADDY PROXY AUTO-INSTALL (Docker Only) ---
+if [ -n "$DOCKER_CMD" ]; then
+    printf "${CYAN}Checking Caddy Proxy...${NC}\n"
+    if docker ps -a --format '{{.Names}}' | grep -Eq "^caddy_proxy$"; then
+        printf "${GREEN}Caddy Proxy is installed and ready.${NC}\n\n"
     else
-        printf "${RED}❌ Could not start Caddy Proxy. HTTPS features may not work.${NC}\n\n"
+        printf "${YELLOW}Caddy Proxy was not found on this system.${NC}\n"
+        printf "Installing required components...\n"
+
+        printf "Creating network... "
+        docker network ls | grep -q caddy_net || docker network create caddy_net >/dev/null 2>&1
+        printf "done\n"
+
+        printf "Downloading image... "
+        docker pull lucaslorentz/caddy-docker-proxy:latest >/dev/null 2>&1
+        printf "done\n"
+
+        printf "Starting Caddy Proxy... "
+        docker run -d \
+            --name caddy_proxy \
+            --network caddy_net \
+            --restart always \
+            -p 80:80 \
+            -p 443:443 \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v caddy_data:/data \
+            lucaslorentz/caddy-docker-proxy:latest >/dev/null 2>&1
+
+        if docker ps --format '{{.Names}}' | grep -Eq "^caddy_proxy$"; then
+            printf "\n${GREEN}Caddy Proxy is ready. HTTPS features are now available.${NC}\n\n"
+        else
+            printf "\n${RED}Could not start Caddy Proxy. HTTPS features may not work.${NC}\n\n"
+        fi
     fi
 fi
 
 # --- SYSTEM DIAGNOSTICS ---
-printf "${BOLD}${CYAN}⚙️  System & Docker Diagnostics:${NC}\n"
+printf "${BOLD}${CYAN}System & Engine Diagnostics:${NC}\n\n"
 
-DOCKER_BIN=$(command -v docker)
-if [ -n "$DOCKER_BIN" ]; then
-    printf " ${GREEN}✅ Docker            : Installed${NC}\n"
+if [ -n "$DOCKER_CMD" ]; then
+    printf "  ${GREEN}Docker             : Installed${NC}\n"
+    DOCKER_ROOT=$(docker info -f '{{.DockerRootDir}}' 2>/dev/null)
+    [ -n "$DOCKER_ROOT" ] && printf "  ${BLUE}Docker Root Dir    : $DOCKER_ROOT${NC}\n"
 else
-    printf " ${RED}❌ Docker            : Missing!${NC}\n"; exit 1;
+    printf "  ${RED}Docker             : Missing${NC}\n"
 fi
 
-if docker compose version >/dev/null 2>&1; then
-    printf " ${GREEN}✅ Docker Compose    : Installed${NC}\n"
-else
-    printf " ${RED}❌ Docker Compose    : Missing!${NC}\n"; exit 1;
+if [ -n "$PODMAN_CMD" ]; then
+    printf "  ${GREEN}Podman             : Installed${NC}\n"
 fi
 
-DOCKER_ROOT=$(docker info -f '{{.DockerRootDir}}' 2>/dev/null)
-if [ -n "$DOCKER_ROOT" ]; then
-    printf " ${BLUE}📁 Docker Root Dir   : $DOCKER_ROOT${NC}\n"
-fi
-
-CADDY_CHECK=$(docker ps -a --format '{{.Names}}' | grep -Eq "^caddy_proxy$" && echo "Found" || echo "Missing")
-if [ "$CADDY_CHECK" == "Found" ]; then
-    printf " ${GREEN}✅ Caddy Proxy       : Installed & Active 🔒${NC}\n"
-else
-    printf " ${YELLOW}⚠️  Caddy Proxy       : NOT FOUND! (HTTPS disabled)${NC}\n"
-fi
-
-if [ -f "/etc/docker/daemon.json" ]; then
-    if [ -L "/etc/docker/daemon.json" ]; then
-        REAL_PATH=$(readlink -f /etc/docker/daemon.json)
-        printf " ${MAGENTA}⚙️  Docker Config      : Symlinked -> $REAL_PATH${NC}\n"
+if [ -n "$DOCKER_CMD" ]; then
+    CADDY_CHECK=$(docker ps -a --format '{{.Names}}' | grep -Eq "^caddy_proxy$" && echo "Found" || echo "Missing")
+    if [ "$CADDY_CHECK" == "Found" ]; then
+        printf "  ${GREEN}Caddy Proxy        : Installed & Active${NC}\n"
     else
-        printf " ${MAGENTA}⚙️  Docker Config      : /etc/docker/daemon.json (Standard)${NC}\n"
+        printf "  ${YELLOW}Caddy Proxy        : NOT FOUND - HTTPS disabled${NC}\n"
     fi
-else
-    printf " ${YELLOW}⚙️  Docker Config      : Default Settings (No daemon.json)${NC}\n"
+    
+    if [ -f "/etc/docker/daemon.json" ]; then
+        if [ -L "/etc/docker/daemon.json" ]; then
+            REAL_PATH=$(readlink -f /etc/docker/daemon.json)
+            printf "  ${MAGENTA}Docker Config      : Symlinked -> $REAL_PATH${NC}\n"
+        else
+            printf "  ${MAGENTA}Docker Config      : /etc/docker/daemon.json - Standard${NC}\n"
+        fi
+    else
+        printf "  ${YELLOW}Docker Config      : Default Settings - No daemon.json${NC}\n"
+    fi
 fi
 
-printf " ${CYAN}📍 Containers Path   : ${BOLD}$BASE_DIR${NC}\n"
-printf "\n"
+printf "\n  ${CYAN}Containers Path    : ${BOLD}$BASE_DIR${NC}\n\n"
+sleep 1
 
-# --- MAIN MENU ---
-printf "${GRAY}==========================================${NC}\n"
-printf "${BOLD}${WHITE}📋 Your Existing Containers:${NC}\n"
-docker ps -a --format "  🔹 {{.Names}} ({{.Status}})"
-printf "${GRAY}==========================================${NC}\n\n"
-
-printf "${BOLD}${CYAN}⚙️  What do you want to do?${NC}\n\n"
-printf "  1. 🔒 Import & Encrypt an existing container\n\n"
-printf "  2. 🚀 Deploy a NEW container\n\n"
-printf "  3. 🛠️  Manage/Edit Container (Start, Stop, Modify config, etc.)\n\n"
-printf "  4. 🔄 Update ALL containers (Pull latest & Recreate)\n\n"
-printf "  5. ⚙️  Setup custom daemon.json location\n\n"
-printf "  6. 🧹 Docker Cleanup & Space Recovery\n\n"
-printf "🤔 Enter choice (1-6): "
-read MAIN_CHOICE
-
-docker network ls | grep -q caddy_net || docker network create caddy_net >/dev/null 2>&1
-
-if [ "$MAIN_CHOICE" == "2" ]; then
-    printf "\n${BOLD}${CYAN}🚀 DEPLOY NEW CONTAINER${NC}\n"
-    printf "📦 Container Name: "
-    read C_NAME
-    printf "🖼️  Docker Image: "
-    read C_IMAGE
-    printf "🔌 Internal Port: "
-    read C_PORT
-    printf "🔒 Encrypt with Caddy (HTTPS)? (y/n): "
-    read ENCRYPT_CHOICE
-    printf "🌐 External Port (e.g., 8160 - Press Enter to hide): "
-    read EXT_PORT
-
-    COMPOSE_FILE="$BASE_DIR/${C_NAME}-compose.yml"
-    mkdir -p "$BASE_DIR/$C_NAME"
-
-    echo "version: '3.8'" > "$COMPOSE_FILE"
-    echo "services:" >> "$COMPOSE_FILE"
-    echo "  $C_NAME:" >> "$COMPOSE_FILE"
-    echo "    image: $C_IMAGE" >> "$COMPOSE_FILE"
-    echo "    container_name: $C_NAME" >> "$COMPOSE_FILE"
-    echo "    restart: always" >> "$COMPOSE_FILE"
-    echo "    volumes:" >> "$COMPOSE_FILE"
-    echo "      - \"./$C_NAME:/data\"" >> "$COMPOSE_FILE"
-
-    if [ -n "$EXT_PORT" ]; then
-        echo "    ports:" >> "$COMPOSE_FILE"
-        echo "      - \"$EXT_PORT:$C_PORT\"" >> "$COMPOSE_FILE"
-    fi
-
-    if [[ "$ENCRYPT_CHOICE" =~ ^[Yy]$ ]]; then
-        echo "    networks:" >> "$COMPOSE_FILE"
-        echo "      - caddy_net" >> "$COMPOSE_FILE"
-        echo "    labels:" >> "$COMPOSE_FILE"
-        echo "      caddy: ${C_NAME}.localhost" >> "$COMPOSE_FILE"
-        echo "      caddy.reverse_proxy: \"{{upstreams $C_PORT}}\"" >> "$COMPOSE_FILE"
-        
-        echo "networks:" >> "$COMPOSE_FILE"
-        echo "  caddy_net:" >> "$COMPOSE_FILE"
-        echo "    external: true" >> "$COMPOSE_FILE"
-    fi
-
-    printf "\n${MAGENTA}🚀 Deploying...${NC}\n"
-    docker compose -f "$COMPOSE_FILE" up -d
+# ==========================================
+# MAIN APPLICATION LOOP
+# ==========================================
+while true; do
+    printf "------------------------------------------------------------\n"
+    printf "${BOLD}${WHITE}Your Existing Containers:${NC}\n\n"
     
-    printf "\n${GREEN}🎉 SUCCESS!${NC}\n"
-    if [[ "$ENCRYPT_CHOICE" =~ ^[Yy]$ ]]; then
-        printf "🌐 Secure Access (PC): ${BOLD}https://${C_NAME}.localhost${NC}\n"
+    HAS_CONTAINERS=false
+    if [ -n "$DOCKER_CMD" ]; then
+        D_OUT=$(docker ps -a --format "  - {{.Names}} ${CYAN}[Docker]${NC} - {{.Status}}")
+        if [ -n "$D_OUT" ]; then echo "$D_OUT"; HAS_CONTAINERS=true; fi
     fi
-    if [ -n "$EXT_PORT" ]; then
-        printf "📱 Network Access (Phone): ${BOLD}http://<Your-IP>:$EXT_PORT${NC}\n\n"
+    
+    if [ -n "$PODMAN_CMD" ]; then
+        P_OUT=$(podman ps -a --format "  - {{.Names}} ${MAGENTA}[Podman]${NC} - {{.Status}}")
+        if [ -n "$P_OUT" ]; then echo "$P_OUT"; HAS_CONTAINERS=true; fi
     fi
 
-elif [ "$MAIN_CHOICE" == "1" ]; then
-    printf "\n${BOLD}${CYAN}🔒 IMPORT & ENCRYPT CONTAINER${NC}\n"
-    printf "📦 Container Name to import: "
-    read C_NAME
+    if [ "$HAS_CONTAINERS" = false ]; then
+        printf "  ${GRAY}No containers found.${NC}\n"
+    fi
+    
+    printf "\n------------------------------------------------------------\n\n"
 
-    COMPOSE_FILE="$BASE_DIR/${C_NAME}-compose.yml"
+    printf "${BOLD}${CYAN}What would you like to do?${NC}\n\n"
+    printf "  1. Import & Encrypt an existing container\n\n"
+    printf "  2. Deploy a NEW container\n\n"
+    printf "  3. Manage/Edit Container ${RED}- Start, Stop, Modify config, etc.${NC}\n\n"
+    printf "  4. Update ALL containers ${RED}- Pull latest & Recreate${NC}\n\n"
+    printf "  5. Setup custom daemon.json location ${RED}- Docker only${NC}\n\n"
+    printf "  6. Cleanup & Space Recovery ${RED}- Docker & Podman${NC}\n\n"
+    printf "  0. Exit TDocker\n\n"
+    printf "Choice: "
+    read MAIN_CHOICE
+    printf "\n"
 
-    if docker ps -a --format '{{.Names}}' | grep -Eq "^${C_NAME}\$"; then
-        printf "${GREEN}🔍 Container '$C_NAME' found!${NC}\n"
+    if [ "$MAIN_CHOICE" == "0" ]; then
+        printf "${GREEN}Exiting TDocker. Goodbye.${NC}\n\n"
+        break
+    fi
+
+    if [ "$MAIN_CHOICE" == "2" ]; then
+        printf "${BOLD}${CYAN}DEPLOY NEW CONTAINER${NC}\n\n"
         
-        C_IMAGE=$(docker inspect --format='{{.Config.Image}}' "$C_NAME")
-        INT_PORT=$(docker inspect --format='{{range $p, $conf := .Config.ExposedPorts}}{{$p}}{{println}}{{end}}' "$C_NAME" | head -n 1 | cut -d '/' -f 1)
-        
-        if [ -z "$INT_PORT" ]; then
-            printf "${YELLOW}⚠️  Internal port not detected. Enter manually: ${NC}"
-            read INT_PORT
+        ENGINE="docker"
+        if [ -n "$DOCKER_CMD" ] && [ -n "$PODMAN_CMD" ]; then
+            printf "Select Target Engine:\n\n"
+            printf "  1. Docker\n\n  2. Podman\n\nChoice: "
+            read ENG_CHOICE
+            printf "\n"
+            if [ "$ENG_CHOICE" == "2" ]; then ENGINE="podman"; fi
+        elif [ -n "$PODMAN_CMD" ] && [ -z "$DOCKER_CMD" ]; then
+            ENGINE="podman"
         fi
 
-        CURRENT_EXT_PORT=$(docker inspect --format='{{range $p, $conf := .NetworkSettings.Ports}}{{if $conf}}{{(index $conf 0).HostPort}}{{println}}{{end}}{{end}}' "$C_NAME" | head -n 1)
-
-        printf "🔒 Encrypt with Caddy (HTTPS)? (y/n): "
-        read ENCRYPT_CHOICE
+        printf "Container Name: "
+        read C_NAME
+        printf "Container Image: "
+        read C_IMAGE
+        printf "Internal Port: "
+        read C_PORT
         
-        if [ -n "$CURRENT_EXT_PORT" ]; then
-            printf "🔌 Current External Port is [${CURRENT_EXT_PORT}]. Press Enter to keep, or type a new one: "
-            read NEW_EXT_PORT
-            EXT_PORT=${NEW_EXT_PORT:-$CURRENT_EXT_PORT}
-        else
-            printf "🔌 Enter External Port to map (Press Enter to hide): "
-            read EXT_PORT
+        ENCRYPT_CHOICE="n"
+        if [ "$ENGINE" == "docker" ]; then
+            printf "Encrypt with Caddy (HTTPS)? ${RED}- y/n:${NC} "
+            read ENCRYPT_CHOICE
         fi
+        
+        printf "External Port ${RED}- e.g. 8160, Press Enter to hide:${NC} "
+        read EXT_PORT
+        printf "\n"
+
+        COMPOSE_FILE="$BASE_DIR/${C_NAME}-compose.yml"
+        mkdir -p "$BASE_DIR/$C_NAME"
 
         echo "version: '3.8'" > "$COMPOSE_FILE"
         echo "services:" >> "$COMPOSE_FILE"
@@ -267,16 +242,12 @@ elif [ "$MAIN_CHOICE" == "1" ]; then
         echo "    image: $C_IMAGE" >> "$COMPOSE_FILE"
         echo "    container_name: $C_NAME" >> "$COMPOSE_FILE"
         echo "    restart: always" >> "$COMPOSE_FILE"
-
-        HAS_MOUNTS=$(docker inspect --format='{{len .Mounts}}' "$C_NAME")
-        if [ "$HAS_MOUNTS" -gt 0 ]; then
-            echo "    volumes:" >> "$COMPOSE_FILE"
-            docker inspect --format='{{range .Mounts}}      - "{{.Source}}:{{.Destination}}"{{println}}{{end}}' "$C_NAME" >> "$COMPOSE_FILE"
-        fi
+        echo "    volumes:" >> "$COMPOSE_FILE"
+        echo "      - \"./$C_NAME:/data\"" >> "$COMPOSE_FILE"
 
         if [ -n "$EXT_PORT" ]; then
             echo "    ports:" >> "$COMPOSE_FILE"
-            echo "      - \"$EXT_PORT:$INT_PORT\"" >> "$COMPOSE_FILE"
+            echo "      - \"$EXT_PORT:$C_PORT\"" >> "$COMPOSE_FILE"
         fi
 
         if [[ "$ENCRYPT_CHOICE" =~ ^[Yy]$ ]]; then
@@ -284,309 +255,397 @@ elif [ "$MAIN_CHOICE" == "1" ]; then
             echo "      - caddy_net" >> "$COMPOSE_FILE"
             echo "    labels:" >> "$COMPOSE_FILE"
             echo "      caddy: ${C_NAME}.localhost" >> "$COMPOSE_FILE"
-            echo "      caddy.reverse_proxy: \"{{upstreams $INT_PORT}}\"" >> "$COMPOSE_FILE"
+            echo "      caddy.reverse_proxy: \"{{upstreams $C_PORT}}\"" >> "$COMPOSE_FILE"
             
             echo "networks:" >> "$COMPOSE_FILE"
             echo "  caddy_net:" >> "$COMPOSE_FILE"
             echo "    external: true" >> "$COMPOSE_FILE"
         fi
 
-        docker rm -f "$C_NAME" >/dev/null 2>&1
-        docker compose -f "$COMPOSE_FILE" up -d
+        printf "${MAGENTA}Deploying via $ENGINE compose...${NC}\n\n"
+        $ENGINE compose -f "$COMPOSE_FILE" up -d
         
-        printf "\n${GREEN}🎉 SUCCESS!${NC}\n"
+        printf "\n${GREEN}SUCCESS!${NC}\n\n"
         if [[ "$ENCRYPT_CHOICE" =~ ^[Yy]$ ]]; then
-            printf "🌐 Secure Access (PC): ${BOLD}https://${C_NAME}.localhost${NC}\n"
+            printf "Secure Access (PC): ${BOLD}https://${C_NAME}.localhost${NC}\n"
         fi
         if [ -n "$EXT_PORT" ]; then
-            printf "📱 Network Access (Phone): ${BOLD}http://<Your-IP>:$EXT_PORT${NC}\n\n"
-        fi
-    else
-        printf "${RED}❌ Container not found! Check the name.${NC}\n\n"
-    fi
-
-elif [ "$MAIN_CHOICE" == "3" ]; then
-    printf "\n${BOLD}${CYAN}🛠️  MANAGE & EDIT CONTAINER${NC}\n"
-    printf "📦 Enter Container Name to manage: "
-    read OLD_NAME
-
-    if docker ps -a --format '{{.Names}}' | grep -Eq "^${OLD_NAME}\$"; then
-        C_NAME="$OLD_NAME"
-        C_IMAGE=$(docker inspect --format='{{.Config.Image}}' "$OLD_NAME")
-        INT_PORT=$(docker inspect --format='{{range $p, $conf := .Config.ExposedPorts}}{{$p}}{{println}}{{end}}' "$OLD_NAME" | head -n 1 | cut -d '/' -f 1)
-        EXT_PORT=$(docker inspect --format='{{range $p, $conf := .NetworkSettings.Ports}}{{if $conf}}{{(index $conf 0).HostPort}}{{println}}{{end}}{{end}}' "$OLD_NAME" | head -n 1)
-        IS_HTTPS=$(docker inspect --format='{{index .Config.Labels "caddy"}}' "$OLD_NAME")
-        
-        MOUNTS_YAML=""
-        HAS_MOUNTS=$(docker inspect --format='{{len .Mounts}}' "$OLD_NAME")
-        if [ "$HAS_MOUNTS" -gt 0 ]; then
-            MOUNTS_YAML=$(docker inspect --format='{{range .Mounts}}      - "{{.Source}}:{{.Destination}}"{{println}}{{end}}' "$OLD_NAME")
+            printf "Network Access (Phone): ${BOLD}http://<Your-IP>:$EXT_PORT${NC}\n"
         fi
 
-        while true; do
-            C_STATE=$(docker inspect --format='{{.State.Status}}' "$OLD_NAME" 2>/dev/null || echo "removed")
-            if [ "$C_STATE" == "removed" ]; then
-                printf "\n${RED}⚠️ Container no longer exists.${NC}\n"
-                break
-            fi
-            C_IP=$(docker inspect --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$OLD_NAME" 2>/dev/null)
-            C_CREATED=$(docker inspect --format='{{.Created}}' "$OLD_NAME" 2>/dev/null | cut -d'.' -f1 | tr 'T' ' ')
+    elif [ "$MAIN_CHOICE" == "1" ]; then
+        printf "${BOLD}${CYAN}IMPORT & ENCRYPT CONTAINER${NC}\n\n"
+        printf "Container Name to import: "
+        read C_NAME
+        printf "\n"
 
-            clear
-            printf "${BOLD}${MAGENTA}=== 🛠️  TDOCKER DASHBOARD: $OLD_NAME ===${NC}\n"
-            printf "${GRAY}------------------------------------------${NC}\n"
-            printf " 📌 State   : "
-            if [ "$C_STATE" == "running" ]; then printf "${GREEN}Running${NC}\n"; else printf "${RED}$C_STATE${NC}\n"; fi
-            printf " 🌐 IP      : ${CYAN}${C_IP:-None}${NC}\n"
-            printf " 📅 Created : ${CYAN}$C_CREATED${NC}\n"
-            printf "${GRAY}------------------------------------------${NC}\n"
-            printf "${BOLD}${WHITE}[ QUICK ACTIONS ]${NC}\n"
-            printf "  ${GREEN}S) Start${NC}  |  ${RED}X) Stop${NC}    |  ${RED}K) Kill${NC}  |  ${YELLOW}R) Restart${NC}\n"
-            printf "  ${BLUE}P) Pause${NC}  |  ${BLUE}U) Resume${NC}  |  ${RED}D) Remove${NC}\n"
-            printf "${GRAY}------------------------------------------${NC}\n"
-            printf "${BOLD}${WHITE}[ CONFIGURATION ]${NC}\n"
-            printf "  1. Container Name : ${CYAN}$C_NAME${NC}\n"
-            printf "  2. Docker Image   : ${CYAN}$C_IMAGE${NC}\n"
-            printf "  3. Internal Port  : ${CYAN}$INT_PORT${NC}\n"
+        C_ENGINE=""
+        if [ -n "$DOCKER_CMD" ] && docker ps -a --format '{{.Names}}' | grep -Eq "^${C_NAME}\$"; then
+            C_ENGINE="docker"
+        elif [ -n "$PODMAN_CMD" ] && podman ps -a --format '{{.Names}}' | grep -Eq "^${C_NAME}\$"; then
+            C_ENGINE="podman"
+        fi
+
+        if [ -n "$C_ENGINE" ]; then
+            printf "${GREEN}Container '$C_NAME' found in [$C_ENGINE]!${NC}\n\n"
+            COMPOSE_FILE="$BASE_DIR/${C_NAME}-compose.yml"
             
-            if [ -n "$IS_HTTPS" ] && [ -n "$EXT_PORT" ]; then
-                printf "  4. Access Mode    : ${GREEN}Hybrid (HTTPS: %s & HTTP Port: %s)${NC}\n" "$IS_HTTPS" "$EXT_PORT"
-            elif [ -n "$IS_HTTPS" ]; then
-                printf "  4. Access Mode    : ${GREEN}HTTPS Only (%s)${NC}\n" "$IS_HTTPS"
+            C_IMAGE=$($C_ENGINE inspect --format='{{.Config.Image}}' "$C_NAME")
+            INT_PORT=$($C_ENGINE inspect --format='{{range $p, $conf := .Config.ExposedPorts}}{{$p}}{{println}}{{end}}' "$C_NAME" | head -n 1 | cut -d '/' -f 1)
+            
+            if [ -z "$INT_PORT" ]; then
+                printf "${YELLOW}Internal port not detected. Enter manually:${NC} "
+                read INT_PORT
+                printf "\n"
+            fi
+
+            CURRENT_EXT_PORT=$($C_ENGINE inspect --format='{{range $p, $conf := .NetworkSettings.Ports}}{{if $conf}}{{(index $conf 0).HostPort}}{{println}}{{end}}{{end}}' "$C_NAME" | head -n 1)
+
+            ENCRYPT_CHOICE="n"
+            if [ "$C_ENGINE" == "docker" ]; then
+                printf "Encrypt with Caddy (HTTPS)? ${RED}- y/n:${NC} "
+                read ENCRYPT_CHOICE
+                printf "\n"
+            fi
+            
+            if [ -n "$CURRENT_EXT_PORT" ]; then
+                printf "Current External Port is [${CURRENT_EXT_PORT}]. Press Enter to keep, or type a new one: "
+                read NEW_EXT_PORT
+                EXT_PORT=${NEW_EXT_PORT:-$CURRENT_EXT_PORT}
             else
-                printf "  4. Access Mode    : ${YELLOW}HTTP Only (Port: %s)${NC}\n" "$EXT_PORT"
+                printf "Enter External Port to map ${RED}- Press Enter to hide:${NC} "
+                read EXT_PORT
             fi
-            
-            printf "\n  5. 💾 ${GREEN}APPLY CONFIG CHANGES & RECREATE${NC}\n"
-            printf "  0. 🔙 ${YELLOW}BACK / EXIT${NC}\n\n"
-            
-            printf "👉 Choose action/edit: "
-            read EDIT_CHOICE
+            printf "\n"
 
-            case ${EDIT_CHOICE,,} in
-                s) docker start "$OLD_NAME" >/dev/null; printf "${GREEN}Started!${NC}\n"; sleep 1 ;;
-                x) docker stop "$OLD_NAME" >/dev/null; printf "${RED}Stopped!${NC}\n"; sleep 1 ;;
-                k) docker kill "$OLD_NAME" >/dev/null; printf "${RED}Killed!${NC}\n"; sleep 1 ;;
-                r) docker restart "$OLD_NAME" >/dev/null; printf "${YELLOW}Restarted!${NC}\n"; sleep 1 ;;
-                p) docker pause "$OLD_NAME" >/dev/null; printf "${BLUE}Paused!${NC}\n"; sleep 1 ;;
-                u) docker unpause "$OLD_NAME" >/dev/null; printf "${BLUE}Resumed!${NC}\n"; sleep 1 ;;
-                d) 
-                   printf "⚠️ Are you sure you want to completely remove $OLD_NAME? (y/n): "
-                   read CONFIRM_RM
-                   if [[ "$CONFIRM_RM" =~ ^[Yy]$ ]]; then
-                       docker rm -f "$OLD_NAME" >/dev/null
-                       rm -f "$BASE_DIR/${OLD_NAME}-compose.yml"
-                       printf "${RED}🗑️ Removed!${NC}\n"; sleep 1; break
-                   fi
-                   ;;
-                1) printf "✏️  New Name: "; read C_NAME ;;
-                2) printf "✏️  New Image: "; read C_IMAGE ;;
-                3) printf "✏️  New Internal Port: "; read INT_PORT ;;
-                4) 
-                   printf "🔒 Enable HTTPS with Caddy? (y/n): "
-                   read ENCRYPT_CHOICE
-                   if [[ "$ENCRYPT_CHOICE" =~ ^[Yy]$ ]]; then
-                       IS_HTTPS="${C_NAME}.localhost"
-                   else
-                       IS_HTTPS=""
-                   fi
-                   printf "🔌 External Port (Press Enter to hide): "
-                   read NEW_EXT_PORT
-                   EXT_PORT="$NEW_EXT_PORT"
-                   ;;
-                5) 
-                   APPLY_CHANGES=true
-                   break 
-                   ;;
-                0) printf "\n${YELLOW}Exited menu.${NC}\n\n"; exit 0 ;;
-                *) printf "${RED}Invalid choice!${NC}\n"; sleep 1 ;;
-            esac
-        done
+            echo "version: '3.8'" > "$COMPOSE_FILE"
+            echo "services:" >> "$COMPOSE_FILE"
+            echo "  $C_NAME:" >> "$COMPOSE_FILE"
+            echo "    image: $C_IMAGE" >> "$COMPOSE_FILE"
+            echo "    container_name: $C_NAME" >> "$COMPOSE_FILE"
+            echo "    restart: always" >> "$COMPOSE_FILE"
 
-        if [ "$APPLY_CHANGES" == "true" ]; then
-            printf "\n${MAGENTA}⚙️  Applying changes...${NC}\n"
-            
-            OLD_COMPOSE="$BASE_DIR/${OLD_NAME}-compose.yml"
-            NEW_COMPOSE="$BASE_DIR/${C_NAME}-compose.yml"
-
-            docker rm -f "$OLD_NAME" >/dev/null 2>&1
-
-            if [ "$OLD_NAME" != "$C_NAME" ]; then
-                if [ -d "$BASE_DIR/$OLD_NAME" ]; then
-                    mv "$BASE_DIR/$OLD_NAME" "$BASE_DIR/$C_NAME"
-                fi
-                rm -f "$OLD_COMPOSE"
-                MOUNTS_YAML=${MOUNTS_YAML//$OLD_NAME/$C_NAME}
-            fi
-
-            echo "version: '3.8'" > "$NEW_COMPOSE"
-            echo "services:" >> "$NEW_COMPOSE"
-            echo "  $C_NAME:" >> "$NEW_COMPOSE"
-            echo "    image: $C_IMAGE" >> "$NEW_COMPOSE"
-            echo "    container_name: $C_NAME" >> "$NEW_COMPOSE"
-            echo "    restart: always" >> "$NEW_COMPOSE"
-            
-            if [ -n "$MOUNTS_YAML" ]; then
-                echo "    volumes:" >> "$NEW_COMPOSE"
-                echo "$MOUNTS_YAML" >> "$NEW_COMPOSE"
-            else
-                echo "    volumes:" >> "$NEW_COMPOSE"
-                echo "      - \"./$C_NAME:/data\"" >> "$NEW_COMPOSE"
+            HAS_MOUNTS=$($C_ENGINE inspect --format='{{len .Mounts}}' "$C_NAME")
+            if [ "$HAS_MOUNTS" -gt 0 ]; then
+                echo "    volumes:" >> "$COMPOSE_FILE"
+                $C_ENGINE inspect --format='{{range .Mounts}}      - "{{.Source}}:{{.Destination}}"{{println}}{{end}}' "$C_NAME" >> "$COMPOSE_FILE"
             fi
 
             if [ -n "$EXT_PORT" ]; then
-                echo "    ports:" >> "$NEW_COMPOSE"
-                echo "      - \"$EXT_PORT:$INT_PORT\"" >> "$NEW_COMPOSE"
+                echo "    ports:" >> "$COMPOSE_FILE"
+                echo "      - \"$EXT_PORT:$INT_PORT\"" >> "$COMPOSE_FILE"
             fi
 
-            if [ -n "$IS_HTTPS" ]; then
-                echo "    networks:" >> "$NEW_COMPOSE"
-                echo "      - caddy_net" >> "$NEW_COMPOSE"
-                echo "    labels:" >> "$NEW_COMPOSE"
-                echo "      caddy: ${C_NAME}.localhost" >> "$NEW_COMPOSE"
-                echo "      caddy.reverse_proxy: \"{{upstreams $INT_PORT}}\"" >> "$NEW_COMPOSE"
+            if [[ "$ENCRYPT_CHOICE" =~ ^[Yy]$ ]]; then
+                echo "    networks:" >> "$COMPOSE_FILE"
+                echo "      - caddy_net" >> "$COMPOSE_FILE"
+                echo "    labels:" >> "$COMPOSE_FILE"
+                echo "      caddy: ${C_NAME}.localhost" >> "$COMPOSE_FILE"
+                echo "      caddy.reverse_proxy: \"{{upstreams $INT_PORT}}\"" >> "$COMPOSE_FILE"
                 
-                echo "networks:" >> "$NEW_COMPOSE"
-                echo "  caddy_net:" >> "$NEW_COMPOSE"
-                echo "    external: true" >> "$NEW_COMPOSE"
+                echo "networks:" >> "$COMPOSE_FILE"
+                echo "  caddy_net:" >> "$COMPOSE_FILE"
+                echo "    external: true" >> "$COMPOSE_FILE"
             fi
 
-            docker compose -f "$NEW_COMPOSE" up -d
-            printf "\n${GREEN}🎉 SUCCESS! Container updated.${NC}\n\n"
+            $C_ENGINE rm -f "$C_NAME" >/dev/null 2>&1
+            $C_ENGINE compose -f "$COMPOSE_FILE" up -d
+            
+            printf "\n${GREEN}SUCCESS! Container Re-deployed.${NC}\n\n"
+            if [[ "$ENCRYPT_CHOICE" =~ ^[Yy]$ ]]; then
+                printf "Secure Access (PC): ${BOLD}https://${C_NAME}.localhost${NC}\n"
+            fi
+            if [ -n "$EXT_PORT" ]; then
+                printf "Network Access (Phone): ${BOLD}http://<Your-IP>:$EXT_PORT${NC}\n"
+            fi
+        else
+            printf "${RED}Error: Container not found. Check the name and try again.${NC}\n"
+        fi
+
+    elif [ "$MAIN_CHOICE" == "3" ]; then
+        printf "${BOLD}${CYAN}MANAGE & EDIT CONTAINER${NC}\n\n"
+        printf "Enter Container Name to manage: "
+        read OLD_NAME
+
+        C_ENGINE=""
+        if [ -n "$DOCKER_CMD" ] && docker ps -a --format '{{.Names}}' | grep -Eq "^${OLD_NAME}\$"; then
+            C_ENGINE="docker"
+        elif [ -n "$PODMAN_CMD" ] && podman ps -a --format '{{.Names}}' | grep -Eq "^${OLD_NAME}\$"; then
+            C_ENGINE="podman"
+        fi
+
+        if [ -n "$C_ENGINE" ]; then
+            C_NAME="$OLD_NAME"
+            C_IMAGE=$($C_ENGINE inspect --format='{{.Config.Image}}' "$OLD_NAME")
+            INT_PORT=$($C_ENGINE inspect --format='{{range $p, $conf := .Config.ExposedPorts}}{{$p}}{{println}}{{end}}' "$OLD_NAME" | head -n 1 | cut -d '/' -f 1)
+            EXT_PORT=$($C_ENGINE inspect --format='{{range $p, $conf := .NetworkSettings.Ports}}{{if $conf}}{{(index $conf 0).HostPort}}{{println}}{{end}}{{end}}' "$OLD_NAME" | head -n 1)
+            IS_HTTPS=$($C_ENGINE inspect --format='{{index .Config.Labels "caddy"}}' "$OLD_NAME" 2>/dev/null)
+            
+            MOUNTS_YAML=""
+            HAS_MOUNTS=$($C_ENGINE inspect --format='{{len .Mounts}}' "$OLD_NAME")
+            if [ "$HAS_MOUNTS" -gt 0 ]; then
+                MOUNTS_YAML=$($C_ENGINE inspect --format='{{range .Mounts}}      - "{{.Source}}:{{.Destination}}"{{println}}{{end}}' "$OLD_NAME")
+            fi
+
+            while true; do
+                C_STATE=$($C_ENGINE inspect --format='{{.State.Status}}' "$OLD_NAME" 2>/dev/null || echo "removed")
+                if [ "$C_STATE" == "removed" ]; then
+                    printf "\n${RED}Container no longer exists.${NC}\n"
+                    break
+                fi
+                C_IP=$($C_ENGINE inspect --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$OLD_NAME" 2>/dev/null)
+                C_CREATED=$($C_ENGINE inspect --format='{{.Created}}' "$OLD_NAME" 2>/dev/null | cut -d'.' -f1 | tr 'T' ' ')
+
+                printf "\n${BOLD}${MAGENTA}--- DASHBOARD: $OLD_NAME [$C_ENGINE] ---${NC}\n\n"
+                
+                printf "  State     : "
+                if [ "$C_STATE" == "running" ]; then printf "${GREEN}Running${NC}\n"; else printf "${RED}$C_STATE${NC}\n"; fi
+                printf "  IP        : ${CYAN}${C_IP:-None}${NC}\n"
+                printf "  Created   : ${CYAN}$C_CREATED${NC}\n\n"
+                
+                printf "${BOLD}${WHITE}QUICK ACTIONS${NC}\n\n"
+                printf "  S. Start  |  X. Stop    |  K. Kill  |  R. Restart\n\n"
+                printf "  P. Pause  |  U. Resume  |  D. Remove\n\n"
+                
+                printf "${BOLD}${WHITE}CONFIGURATION${NC}\n\n"
+                printf "  1. Container Name : ${CYAN}$C_NAME${NC}\n\n"
+                printf "  2. Image          : ${CYAN}$C_IMAGE${NC}\n\n"
+                printf "  3. Internal Port  : ${CYAN}$INT_PORT${NC}\n\n"
+                
+                if [ -n "$IS_HTTPS" ] && [ -n "$EXT_PORT" ]; then
+                    printf "  4. Access Mode    : ${GREEN}Hybrid - HTTPS: %s & HTTP Port: %s${NC}\n\n" "$IS_HTTPS" "$EXT_PORT"
+                elif [ -n "$IS_HTTPS" ]; then
+                    printf "  4. Access Mode    : ${GREEN}HTTPS Only - %s${NC}\n\n" "$IS_HTTPS"
+                else
+                    printf "  4. Access Mode    : ${YELLOW}HTTP Only - Port: %s${NC}\n\n" "$EXT_PORT"
+                fi
+                
+                printf "  5. ${GREEN}APPLY CONFIG CHANGES & RECREATE${NC}\n\n"
+                printf "  0. ${YELLOW}BACK / EXIT${NC}\n\n"
+                
+                printf "Choice: "
+                read EDIT_CHOICE
+                printf "\n"
+
+                case ${EDIT_CHOICE,,} in
+                    s) $C_ENGINE start "$OLD_NAME" >/dev/null; printf "${GREEN}Started.${NC}\n"; sleep 1 ;;
+                    x) $C_ENGINE stop "$OLD_NAME" >/dev/null; printf "${RED}Stopped.${NC}\n"; sleep 1 ;;
+                    k) $C_ENGINE kill "$OLD_NAME" >/dev/null; printf "${RED}Killed.${NC}\n"; sleep 1 ;;
+                    r) $C_ENGINE restart "$OLD_NAME" >/dev/null; printf "${YELLOW}Restarted.${NC}\n"; sleep 1 ;;
+                    p) $C_ENGINE pause "$OLD_NAME" >/dev/null; printf "${BLUE}Paused.${NC}\n"; sleep 1 ;;
+                    u) $C_ENGINE unpause "$OLD_NAME" >/dev/null; printf "${BLUE}Resumed.${NC}\n"; sleep 1 ;;
+                    d) 
+                       printf "Are you sure you want to completely remove $OLD_NAME? ${RED}- y/n:${NC} "
+                       read CONFIRM_RM
+                       if [[ "$CONFIRM_RM" =~ ^[Yy]$ ]]; then
+                           $C_ENGINE rm -f "$OLD_NAME" >/dev/null
+                           rm -f "$BASE_DIR/${OLD_NAME}-compose.yml"
+                           printf "\n${RED}Removed.${NC}\n"; sleep 1; break
+                       fi
+                       ;;
+                    1) printf "New Name: "; read C_NAME ;;
+                    2) printf "New Image: "; read C_IMAGE ;;
+                    3) printf "New Internal Port: "; read INT_PORT ;;
+                    4) 
+                       if [ "$C_ENGINE" == "docker" ]; then
+                           printf "Enable HTTPS with Caddy? ${RED}- y/n:${NC} "
+                           read ENCRYPT_CHOICE
+                           if [[ "$ENCRYPT_CHOICE" =~ ^[Yy]$ ]]; then
+                               IS_HTTPS="${C_NAME}.localhost"
+                           else
+                               IS_HTTPS=""
+                           fi
+                       else
+                           printf "${YELLOW}HTTPS auto-proxy is supported on Docker only.${NC}\n"
+                           IS_HTTPS=""
+                       fi
+                       printf "External Port ${RED}- Press Enter to hide:${NC} "
+                       read NEW_EXT_PORT
+                       EXT_PORT="$NEW_EXT_PORT"
+                       ;;
+                    5) 
+                       APPLY_CHANGES=true
+                       break 
+                       ;;
+                    0) break ;;
+                    *) printf "${RED}Invalid choice.${NC}\n"; sleep 1 ;;
+                esac
+            done
+
+            if [ "$APPLY_CHANGES" == "true" ]; then
+                printf "${MAGENTA}Applying changes...${NC}\n\n"
+                
+                OLD_COMPOSE="$BASE_DIR/${OLD_NAME}-compose.yml"
+                NEW_COMPOSE="$BASE_DIR/${C_NAME}-compose.yml"
+
+                $C_ENGINE rm -f "$OLD_NAME" >/dev/null 2>&1
+
+                if [ "$OLD_NAME" != "$C_NAME" ]; then
+                    if [ -d "$BASE_DIR/$OLD_NAME" ]; then
+                        mv "$BASE_DIR/$OLD_NAME" "$BASE_DIR/$C_NAME"
+                    fi
+                    rm -f "$OLD_COMPOSE"
+                    MOUNTS_YAML=${MOUNTS_YAML//$OLD_NAME/$C_NAME}
+                fi
+
+                echo "version: '3.8'" > "$NEW_COMPOSE"
+                echo "services:" >> "$NEW_COMPOSE"
+                echo "  $C_NAME:" >> "$NEW_COMPOSE"
+                echo "    image: $C_IMAGE" >> "$NEW_COMPOSE"
+                echo "    container_name: $C_NAME" >> "$NEW_COMPOSE"
+                echo "    restart: always" >> "$NEW_COMPOSE"
+                
+                if [ -n "$MOUNTS_YAML" ]; then
+                    echo "    volumes:" >> "$NEW_COMPOSE"
+                    echo "$MOUNTS_YAML" >> "$NEW_COMPOSE"
+                else
+                    echo "    volumes:" >> "$NEW_COMPOSE"
+                    echo "      - \"./$C_NAME:/data\"" >> "$NEW_COMPOSE"
+                fi
+
+                if [ -n "$EXT_PORT" ]; then
+                    echo "    ports:" >> "$NEW_COMPOSE"
+                    echo "      - \"$EXT_PORT:$INT_PORT\"" >> "$NEW_COMPOSE"
+                fi
+
+                if [ -n "$IS_HTTPS" ]; then
+                    echo "    networks:" >> "$NEW_COMPOSE"
+                    echo "      - caddy_net" >> "$NEW_COMPOSE"
+                    echo "    labels:" >> "$NEW_COMPOSE"
+                    echo "      caddy: ${C_NAME}.localhost" >> "$NEW_COMPOSE"
+                    echo "      caddy.reverse_proxy: \"{{upstreams $INT_PORT}}\"" >> "$NEW_COMPOSE"
+                    
+                    echo "networks:" >> "$NEW_COMPOSE"
+                    echo "  caddy_net:" >> "$NEW_COMPOSE"
+                    echo "    external: true" >> "$NEW_COMPOSE"
+                fi
+
+                $C_ENGINE compose -f "$NEW_COMPOSE" up -d
+                printf "\n${GREEN}SUCCESS! Container updated.${NC}\n"
+            fi
+
+        else
+            printf "${RED}Error: Container not found.${NC}\n"
+        fi
+
+    elif [ "$MAIN_CHOICE" == "4" ]; then
+        printf "${BOLD}${CYAN}UPDATING ALL CONTAINERS${NC}\n\n"
+        printf "${GRAY}Scanning for compose files in $BASE_DIR...${NC}\n\n"
+        
+        FOUND_ANY=false
+        for compose_file in *-compose.yml; do
+            if [ -f "$compose_file" ]; then
+                FOUND_ANY=true
+                c_name=$(basename "$compose_file" -compose.yml)
+                
+                C_ENGINE="docker"
+                if [ -n "$DOCKER_CMD" ] && docker ps -a --format '{{.Names}}' | grep -Eq "^${c_name}\$"; then
+                    C_ENGINE="docker"
+                elif [ -n "$PODMAN_CMD" ] && podman ps -a --format '{{.Names}}' | grep -Eq "^${c_name}\$"; then
+                    C_ENGINE="podman"
+                elif [ -n "$PODMAN_CMD" ] && [ -z "$DOCKER_CMD" ]; then
+                    C_ENGINE="podman"
+                fi
+
+                printf "${MAGENTA}Updating: ${BOLD}%s${NC} via %s\n" "$c_name" "$C_ENGINE"
+                $C_ENGINE compose -f "$compose_file" pull
+                $C_ENGINE compose -f "$compose_file" up -d
+                printf "${GREEN}%s Updated Successfully.${NC}\n\n" "$c_name"
+            fi
+        done
+        
+        if [ "$FOUND_ANY" = false ]; then
+            printf "${YELLOW}No managed compose files found in this directory.${NC}\n"
+        else
+            printf "${GREEN}All updates completed.${NC}\n"
+        fi
+
+    elif [ "$MAIN_CHOICE" == "5" ]; then
+        if [ -z "$DOCKER_CMD" ]; then
+            printf "${YELLOW}Docker is not installed. This option applies to Docker only.${NC}\n"
+        else
+            printf "${BOLD}${CYAN}SETUP CUSTOM DAEMON.JSON${NC}\n\n"
+            printf "Folder to store daemon.json: "
+            read DAEMON_DIR
+            DAEMON_DIR=${DAEMON_DIR:-$HOME/Docker/config}
+            
+            DAEMON_DIR=$(echo "$DAEMON_DIR" | sed 's/^cd //; s/ $//')
+            mkdir -p "$DAEMON_DIR"
+            DAEMON_FILE="$DAEMON_DIR/daemon.json"
+
+            if [ ! -f "$DAEMON_FILE" ]; then
+                echo "{}" > "$DAEMON_FILE"
+                printf "${GREEN}Created empty config file at $DAEMON_FILE${NC}\n\n"
+            else
+                printf "${YELLOW}Config file already exists at $DAEMON_FILE${NC}\n\n"
+            fi
+
+            if [ -f "/etc/docker/daemon.json" ] && [ ! -L "/etc/docker/daemon.json" ]; then
+                sudo mv /etc/docker/daemon.json /etc/docker/daemon.json.backup
+                printf "${BLUE}Backed up old config to /etc/docker/daemon.json.backup${NC}\n\n"
+            fi
+
+            sudo ln -sf "$DAEMON_FILE" /etc/docker/daemon.json
+            printf "${GREEN}Symlink created. System now reads from $DAEMON_FILE${NC}\n\n"
+
+            printf "Restart Docker service now to apply changes? ${RED}- y/n:${NC} "
+            read RESTART_DOCKER
+            printf "\n"
+            if [[ "$RESTART_DOCKER" =~ ^[Yy]$ ]]; then
+                sudo systemctl restart docker
+                printf "${GREEN}Docker restarted successfully.${NC}\n"
+            fi
+        fi
+
+    elif [ "$MAIN_CHOICE" == "6" ]; then
+        printf "${BOLD}${CYAN}CLEANUP & SPACE RECOVERY${NC}\n\n"
+
+        printf "Calculating unused space... "
+        TOTAL_RECLAIMABLE="0B"
+        if [ -n "$DOCKER_CMD" ]; then
+            TOTAL_RECLAIMABLE=$(docker system df 2>/dev/null | tail -1 | awk '{print $NF}' || echo "0B")
+        fi
+        printf "done.\n\n"
+
+        printf "${BOLD}${WHITE}Cleanup Preview${NC}\n\n"
+        printf "This process will securely remove:\n"
+        printf "  - Stopped containers\n"
+        printf "  - Dangling & unused images\n"
+        printf "  - Unused networks\n"
+        printf "  - Build cache\n\n"
+        
+        printf "Estimated space recovery: ${GREEN}%s${NC}\n\n" "$TOTAL_RECLAIMABLE"
+        printf "${GREEN}Nothing currently running will be removed.${NC}\n\n"
+
+        printf "${YELLOW}This action will permanently remove unused container data.${NC}\n\n"
+        printf "Continue? ${RED}- y/n:${NC} "
+        read CLEANUP_CONFIRM
+        printf "\n"
+
+        if [[ "$CLEANUP_CONFIRM" =~ ^[Yy]$ ]]; then
+            printf "${CYAN}Cleaning up...${NC}\n\n"
+
+            if [ -n "$DOCKER_CMD" ]; then
+                printf "  Executing Docker cleanup...\n"
+                docker system prune -a -f --volumes >/dev/null 2>&1
+            fi
+            
+            if [ -n "$PODMAN_CMD" ]; then
+                printf "  Executing Podman cleanup...\n"
+                podman system prune -a -f --volumes >/dev/null 2>&1
+            fi
+
+            printf "\n${BOLD}${GREEN}Cleanup Complete.${NC}\n\n"
+            printf "All unused resources have been cleared. Only active containers remain on the system.\n"
+        else
+            printf "${YELLOW}Cleanup cancelled. Nothing was changed.${NC}\n"
         fi
 
     else
-        printf "${RED}❌ Container not found!${NC}\n\n"
+        printf "${RED}Invalid Choice.${NC}\n"
     fi
 
-elif [ "$MAIN_CHOICE" == "4" ]; then
-    printf "\n${BOLD}${CYAN}🔄 UPDATING ALL CONTAINERS${NC}\n"
-    printf "${GRAY}Scanning for compose files in $BASE_DIR...${NC}\n\n"
-    
-    FOUND_ANY=false
-    for compose_file in *-compose.yml; do
-        if [ -f "$compose_file" ]; then
-            FOUND_ANY=true
-            c_name=$(basename "$compose_file" -compose.yml)
-            printf "${MAGENTA}📦 Updating: ${BOLD}%s${NC}\n" "$c_name"
-            docker compose -f "$compose_file" pull
-            docker compose -f "$compose_file" up -d
-            printf "${GREEN}✅ %s Updated Successfully!${NC}\n\n" "$c_name"
-        fi
-    done
-    
-    if [ "$FOUND_ANY" = false ]; then
-        printf "${YELLOW}⚠️  No managed compose files found in this directory.${NC}\n\n"
-    else
-        printf "${GREEN}🎉 All updates completed!${NC}\n\n"
-    fi
-
-elif [ "$MAIN_CHOICE" == "5" ]; then
-    printf "\n${BOLD}${CYAN}🛠️  SETUP CUSTOM DAEMON.JSON${NC}\n"
-    printf "📂 Folder to store daemon.json: "
-    read DAEMON_DIR
-    DAEMON_DIR=${DAEMON_DIR:-/home/mohamed/Docker/config}
-    
-    DAEMON_DIR=$(echo "$DAEMON_DIR" | sed 's/^cd //; s/ $//')
-    mkdir -p "$DAEMON_DIR"
-    DAEMON_FILE="$DAEMON_DIR/daemon.json"
-
-    if [ ! -f "$DAEMON_FILE" ]; then
-        echo "{}" > "$DAEMON_FILE"
-        printf "${GREEN}✅ Created empty config file at $DAEMON_FILE${NC}\n"
-    else
-        printf "${YELLOW}✅ Config file already exists at $DAEMON_FILE${NC}\n"
-    fi
-
-    if [ -f "/etc/docker/daemon.json" ] && [ ! -L "/etc/docker/daemon.json" ]; then
-        sudo mv /etc/docker/daemon.json /etc/docker/daemon.json.backup
-        printf "${BLUE}📦 Backed up old config to /etc/docker/daemon.json.backup${NC}\n"
-    fi
-
-    sudo ln -sf "$DAEMON_FILE" /etc/docker/daemon.json
-    printf "${GREEN}🔗 Symlink created! System now reads from $DAEMON_FILE${NC}\n"
-
-    printf "🔄 Restart Docker service now to apply changes? (y/n): "
-    read RESTART_DOCKER
-    if [[ "$RESTART_DOCKER" =~ ^[Yy]$ ]]; then
-        sudo systemctl restart docker
-        printf "${GREEN}🚀 Docker restarted successfully!${NC}\n\n"
-    fi
-
-elif [ "$MAIN_CHOICE" == "6" ]; then
-    printf "\n${BOLD}${CYAN}🧹 DOCKER CLEANUP & SPACE RECOVERY${NC}\n\n"
-
-    # Collect stats for preview
-    STOPPED_CONTAINERS=$(docker ps -a --filter "status=exited" --filter "status=created" --format '{{.Names}}' | wc -l | tr -d ' ')
-    DANGLING_IMAGES=$(docker images -f "dangling=true" -q | wc -l | tr -d ' ')
-    UNUSED_IMAGES=$(docker images --format '{{.Repository}}:{{.Tag}}' | grep -v "$(docker ps -a --format '{{.Image}}')" | wc -l | tr -d ' ')
-    UNUSED_NETWORKS=$(docker network ls --filter "type=custom" --format '{{.Name}}' | grep -v "$(docker network inspect $(docker ps -q) --format '{{range .NetworkSettings.Networks}}{{.NetworkID}}{{end}}' 2>/dev/null)" | wc -l | tr -d ' ')
-    UNUSED_VOLUMES=$(docker volume ls -qf dangling=true | wc -l | tr -d ' ')
-    BUILD_CACHE=$(docker system df --format '{{.Type}}: {{.Size}}' 2>/dev/null | grep "Build Cache" | awk '{print $NF}' || echo "unknown")
-    TOTAL_RECLAIMABLE=$(docker system df 2>/dev/null | tail -1 | awk '{print $NF}' || echo "calculating...")
-
-    printf "${BOLD}${WHITE}🧹 Docker Cleanup Preview${NC}\n"
-    printf "${GRAY}------------------------------------------${NC}\n"
-    printf "The following items can be removed:\n\n"
-    printf "  • Stopped containers  : ${YELLOW}%s${NC}\n" "$STOPPED_CONTAINERS"
-    printf "  • Dangling images     : ${YELLOW}%s${NC}\n" "$DANGLING_IMAGES"
-    printf "  • Unused images       : ${YELLOW}%s${NC}\n" "$UNUSED_IMAGES"
-    printf "  • Unused networks     : ${YELLOW}%s${NC}\n" "$UNUSED_NETWORKS"
-    printf "  • Unused volumes      : ${YELLOW}%s${NC}\n" "$UNUSED_VOLUMES"
-    printf "  • Build cache         : ${YELLOW}%s${NC}\n" "$BUILD_CACHE"
-    printf "  • Temporary Docker files & broken layers\n\n"
-    printf "Estimated space recovery:\n"
-    printf "  ${GREEN}≈ %s${NC}\n\n" "$TOTAL_RECLAIMABLE"
-    printf "${GREEN}Nothing currently running will be removed.${NC}\n"
-    printf "${GRAY}------------------------------------------${NC}\n\n"
-
-    printf "${YELLOW}⚠️  This action will permanently remove unused Docker data.${NC}\n\n"
-    printf "Continue? (y/n): "
-    read CLEANUP_CONFIRM
-
-    if [[ "$CLEANUP_CONFIRM" =~ ^[Yy]$ ]]; then
-        printf "\n${CYAN}Cleaning up...${NC}\n\n"
-
-        # Remove stopped containers
-        printf "  Removing stopped containers...\n"
-        docker container prune -f >/dev/null 2>&1
-
-        # Remove dangling and unused images
-        printf "  Removing unused images...\n"
-        docker image prune -a -f >/dev/null 2>&1
-
-        # Remove unused networks
-        printf "  Removing unused networks...\n"
-        docker network prune -f >/dev/null 2>&1
-
-        # Remove build cache
-        printf "  Clearing build cache...\n"
-        docker builder prune -a -f >/dev/null 2>&1
-
-        # Remove unused volumes (with warning already shown above)
-        printf "  Removing unused volumes...\n"
-        docker volume prune -f >/dev/null 2>&1
-
-        # Collect post-cleanup stats
-        REMOVED_CONTAINERS=$STOPPED_CONTAINERS
-        REMOVED_IMAGES=$(( DANGLING_IMAGES + UNUSED_IMAGES ))
-        REMOVED_NETWORKS=$UNUSED_NETWORKS
-        REMOVED_VOLUMES=$UNUSED_VOLUMES
-
-        printf "\n${BOLD}${GREEN}🧹 Cleanup Complete${NC}\n"
-        printf "${GRAY}------------------------------------------${NC}\n"
-        printf "Removed:\n"
-        printf "  • %s stopped containers\n" "$REMOVED_CONTAINERS"
-        printf "  • %s images\n" "$REMOVED_IMAGES"
-        printf "  • %s networks\n" "$REMOVED_NETWORKS"
-        printf "  • %s volumes\n" "$REMOVED_VOLUMES"
-        printf "  • Build cache\n\n"
-        printf "${GREEN}✅ Docker has been cleaned successfully.\n"
-        printf "Only active containers and resources still in use remain on the system.${NC}\n\n"
-    else
-        printf "\n${YELLOW}Cleanup cancelled. Nothing was changed.${NC}\n\n"
-    fi
-
-else
-    printf "${RED}❌ Invalid Choice!${NC}\n\n"
-fi
+    printf "\n${GRAY}Press Enter to return to the Main Menu...${NC}"
+    read -r
+    clear
+done

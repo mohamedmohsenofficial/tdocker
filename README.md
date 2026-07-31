@@ -50,15 +50,17 @@ TDocker requires either Docker or Podman installed on your system.
 sudo apt update && sudo apt install docker.io docker-compose-v2
 sudo systemctl enable --now docker
 ```
+
 ```bash
 # Fedora
 sudo dnf install docker docker-compose
 sudo systemctl enable --now docker
+```
 
+```bash
 # Arch Linux
 sudo pacman -S docker docker-compose
 sudo systemctl enable --now docker
-
 ```
 
 **For Podman Users:**
